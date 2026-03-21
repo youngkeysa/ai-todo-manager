@@ -1,0 +1,5 @@
+{
+  // Tailwind CSS v4의 @theme, @custom-variant, @apply 등
+  // 커스텀 at-rule을 IDE가 모른다고 경고하는 것을 억제
+  "css.lint.unknownAtRules": "ignore"
+}
