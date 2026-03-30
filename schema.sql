@@ -63,6 +63,7 @@ CREATE TABLE public.todos (
   priority TEXT NOT NULL CHECK (priority IN ('high', 'medium', 'low')),
   category TEXT NOT NULL CHECK (category IN ('업무', '개인', '학습', '기타')),
   completed BOOLEAN DEFAULT FALSE NOT NULL,
+  order_index INTEGER DEFAULT 0 NOT NULL,
   updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
 );
 
