@@ -110,8 +110,9 @@ CREATE TABLE public.goals (
   user_id UUID REFERENCES public.users(id) ON DELETE CASCADE NOT NULL,
   type TEXT NOT NULL CHECK (type IN ('monthly', 'weekly')),
   content TEXT NOT NULL DEFAULT '',
+  order_index INTEGER DEFAULT 0 NOT NULL,
   updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
-  UNIQUE(user_id, type)
+  UNIQUE(user_id, type, order_index)
 );
 
 -- RLS 활성화

@@ -87,5 +87,6 @@ export interface Goal {
   user_id: string;
   type: GoalType;
   content: string;
+  order_index: number;
   updated_at: string;
 }
