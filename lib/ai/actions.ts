@@ -102,3 +102,33 @@ ${summaryContext}`,
     return { data: null, error: "요약을 생성하는 중 오류가 발생했습니다." };
   }
 }
+
+/**
+ * 3. 작성된 일기와 할일 목록을 분석하여 AI 성찰/피드백을 생성합니다.
+ */
+export async function generateDayReflection(todos: any[], diaryContent: string) {
+  try {
+    const completedCount = (todos || []).filter((t) => t.completed).length;
+    const totalCount = (todos || []).length;
+
+    const { text } = await generateText({
+      model: google("gemini-2.0-flash"), // 안정적인 2.0 모델 사용
+      prompt: `당신은 사용자의 하루를 따뜻하게 안아주고 격려해주는 친절한 AI 멘토입니다.
+사용자가 작성한 [오늘의 일기] 내용과 [할일 완료 현황]을 바탕으로, 오늘 하루 고생한 사용자를 위한 짧은 성찰과 격려의 메시지를 작성해주세요.
+
+오늘의 할일 완료 현황: 총 ${totalCount}개 중 ${completedCount}개 완료
+사용자의 일기 내용: "${diaryContent}"
+
+답변 지침:
+- 한국어로 작성하세요.
+- 너무 길지 않게 2~3문장 정도로 핵심적인 격려를 해주세요.
+- 일기의 감정과 할일의 성과를 연결지어 공감해주세요.
+- 존댓말을 사용하며 아주 친절하고 따뜻한 어조를 유지하세요.`,
+    });
+
+    return { data: text, error: null };
+  } catch (error: any) {
+    console.error("AI Reflection Generation Error:", error);
+    return { data: null, error: "AI 피드백을 생성하는 중 오류가 발생했습니다." };
+  }
+}

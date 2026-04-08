@@ -90,3 +90,13 @@ export interface Goal {
   order_index: number;
   updated_at: string;
 }
+
+/** 일기 항목 인터페이스 */
+export interface Diary {
+  id: string;
+  user_id: string;
+  date: string; // YYYY-MM-DD 형식
+  content: string;
+  ai_reflection?: string;
+  updated_at: string;
+}

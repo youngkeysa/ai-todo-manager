@@ -137,3 +137,39 @@ CREATE POLICY "Users can update own goals"
 CREATE OR REPLACE TRIGGER update_goals_updated_at
   BEFORE UPDATE ON public.goals
   FOR EACH ROW EXECUTE PROCEDURE public.update_updated_at_column();
+
+-- ------------------------------------------------------------
+-- 4. diaries 테이블 (오늘의 일기/다짐 관리)
+-- ------------------------------------------------------------
+CREATE TABLE public.diaries (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES public.users(id) ON DELETE CASCADE NOT NULL,
+  date DATE NOT NULL,
+  content TEXT NOT NULL DEFAULT '',
+  ai_reflection TEXT,
+  updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+  UNIQUE(user_id, date)
+);
+
+-- RLS 활성화
+ALTER TABLE public.diaries ENABLE ROW LEVEL SECURITY;
+
+-- 정책: 소유자만 자신의 일기 조회 권한
+CREATE POLICY "Users can view own diaries"
+  ON public.diaries FOR SELECT
+  USING (auth.uid() = user_id);
+
+-- 정책: 소유자만 자신의 일기 생성 권한
+CREATE POLICY "Users can insert own diaries"
+  ON public.diaries FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+-- 정책: 소유자만 자신의 일기 수정 권한
+CREATE POLICY "Users can update own diaries"
+  ON public.diaries FOR UPDATE
+  USING (auth.uid() = user_id);
+
+-- (자동화) 일기 수정 시 updated_at 타임스탬프 자동 갱신 트리거
+CREATE OR REPLACE TRIGGER update_diaries_updated_at
+  BEFORE UPDATE ON public.diaries
+  FOR EACH ROW EXECUTE PROCEDURE public.update_updated_at_column();

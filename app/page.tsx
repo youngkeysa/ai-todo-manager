@@ -10,6 +10,7 @@ import SearchFilter from "@/components/todos/SearchFilter";
 import AiSummaryPanel from "@/components/todos/AiSummaryPanel";
 import TodoFormModal from "@/components/todos/TodoFormModal";
 import GoalsPanel from "@/components/goals/GoalsPanel";
+import DiarySection from "@/components/diary/DiarySection";
 import {
   type Todo,
   type TodoCreateInput,
@@ -538,6 +539,9 @@ export default function HomePage() {
           onReorder={handleReorder}
           canReorder={sort.field === "order_index" && filter.status === "all"}
         />
+
+        {/* 푸터 바로 위: 오늘의 일기 섹션 */}
+        {currentUser && <DiarySection userId={currentUser.id} todos={todos} />}
       </main>
 
       {/* 추가/수정 모달 */}
