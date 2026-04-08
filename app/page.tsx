@@ -9,6 +9,7 @@ import TodoList from "@/components/todos/TodoList";
 import SearchFilter from "@/components/todos/SearchFilter";
 import AiSummaryPanel from "@/components/todos/AiSummaryPanel";
 import TodoFormModal from "@/components/todos/TodoFormModal";
+import GoalsPanel from "@/components/goals/GoalsPanel";
 import {
   type Todo,
   type TodoCreateInput,
@@ -38,7 +39,7 @@ export default function HomePage() {
     status: "all",
   });
   const [sort, setSort] = useState<SortOption>({
-    field: "priority",
+    field: "order_index",
     direction: "desc",
   });
 
@@ -67,12 +68,24 @@ export default function HomePage() {
         if (!user) return; // 미들웨어에서 리디렉션 처리됨
         if (isMounted) setCurrentUser(user);
 
-        const { data, error } = await supabase
+        // 1. order_index 기준 정렬 시도
+        let { data, error } = await supabase
           .from("todos")
           .select("*")
-          .order("created_date", { ascending: false });
+          .order("order_index", { ascending: false });
 
-        if (error) throw error;
+        // 정렬 에러 발생 시 (컬럼 미생성 등) 폴백 처리
+        if (error) {
+          console.warn("order_index 정렬 실패, 생성일순으로 불러옵니다.");
+          const { data: fallbackData, error: fallbackError } = await supabase
+            .from("todos")
+            .select("*")
+            .order("created_date", { ascending: false });
+          
+          if (fallbackError) throw fallbackError;
+          data = fallbackData;
+        }
+
         if (isMounted && data) {
           setTodos(data as Todo[]);
         }
@@ -225,6 +238,38 @@ export default function HomePage() {
     [editTarget, supabase]
   );
 
+  /** 할일 순서 변경 (Drag & Drop) */
+  const handleReorder = useCallback(
+    async (newTodos: Todo[]) => {
+      // 1. UI 즉시 반영
+      setTodos(newTodos);
+
+      // 2. DB 반영 (비동기)
+      // 모든 항목의 order_index를 업데이트하는 대신, 변경된 항목들만 처리하거나 
+      // 간단하게 전체 순서를 기반으로 order_index를 재계산하여 업데이트
+      const updates = newTodos.map((todo, index) => ({
+        id: todo.id,
+        order_index: (newTodos.length - index) * 100, // 큰 값이 위로 오도록 (desc 정렬 기준)
+      }));
+
+      // Supabase 에서 upsert 또는 개별 update 수행 (여기서는 단순화를 위해 개별 업데이트 제안)
+      // 성능을 위해 rpc를 사용하거나 병렬 처리를 할 수 있음
+      try {
+        const { error } = await supabase.from("todos").upsert(
+          newTodos.map((t, i) => ({
+            ...t,
+            order_index: (newTodos.length - i) * 100,
+            updated_at: new Date().toISOString(),
+          }))
+        );
+        if (error) throw error;
+      } catch (err) {
+        console.error("순서 저장 실패:", err);
+      }
+    },
+    [supabase]
+  );
+
   /** 필터/정렬 제어 */
   const handleFilterChange = useCallback((partial: Partial<TodoFilter>) => {
     setFilter((prev) => ({ ...prev, ...partial }));
@@ -284,8 +329,8 @@ export default function HomePage() {
     const newRecord = {
       user_id: currentUser.id,
       title: aiParsedTodo.title,
-      description: aiParsedTodo.description || null,
-      due_date: aiParsedTodo.dueDate || null,
+      description: (aiParsedTodo.description === "null" || !aiParsedTodo.description) ? null : aiParsedTodo.description,
+      due_date: (aiParsedTodo.dueDate === "null" || !aiParsedTodo.dueDate) ? null : aiParsedTodo.dueDate,
       priority: aiParsedTodo.priority || "medium",
       category: aiParsedTodo.category || "기타",
     };
@@ -344,6 +389,9 @@ export default function HomePage() {
         const da = a.due_date ? new Date(a.due_date).getTime() : Infinity;
         const db = b.due_date ? new Date(b.due_date).getTime() : Infinity;
         return sort.direction === "asc" ? da - db : db - da;
+      }
+      if (sort.field === "order_index") {
+        return sort.direction === "asc" ? a.order_index - b.order_index : b.order_index - a.order_index;
       }
       const da = new Date(a.created_date).getTime();
       const db = new Date(b.created_date).getTime();
@@ -436,6 +484,8 @@ export default function HomePage() {
           error={aiError}
         />
 
+        {currentUser && <GoalsPanel userId={currentUser.id} />}
+
         <SearchFilter
           filter={filter}
           sort={sort}
@@ -485,6 +535,8 @@ export default function HomePage() {
           onToggle={handleToggle}
           onDelete={handleDelete}
           onEdit={handleEdit}
+          onReorder={handleReorder}
+          canReorder={sort.field === "order_index" && filter.status === "all"}
         />
       </main>
 

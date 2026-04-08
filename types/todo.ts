@@ -13,7 +13,7 @@ export type Category = "업무" | "개인" | "학습" | "기타";
 export type TodoStatus = "active" | "completed" | "overdue";
 
 /** 정렬 기준 필드 */
-export type SortField = "priority" | "due_date" | "created_date";
+export type SortField = "priority" | "due_date" | "created_date" | "order_index";
 
 /** 정렬 방향 */
 export type SortDirection = "asc" | "desc";
@@ -32,6 +32,7 @@ export interface Todo {
   category: Category;
   completed: boolean;
   updated_at: string;
+  order_index: number;
 }
 
 // ------------------------------------------------------------
@@ -74,4 +75,17 @@ export interface AiSummary {
   insights: string[];
   recommendations: string[];
   weekly_trend?: { day: string; count: number }[];
+}
+
+// ------------------------------------------------------------
+// 월간 / 주간 목표
+// ------------------------------------------------------------
+export type GoalType = "monthly" | "weekly";
+
+export interface Goal {
+  id: string;
+  user_id: string;
+  type: GoalType;
+  content: string;
+  updated_at: string;
 }

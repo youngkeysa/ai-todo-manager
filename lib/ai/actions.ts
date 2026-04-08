@@ -16,12 +16,14 @@ export async function generateTodoFromText(prompt: string) {
       model: google("gemini-2.5-flash"),
       schema: z.object({
         title: z.string().describe("만들어야 하는 할일의 명확한 제목 (예: 팀 회의 준비)"),
-        description: z.string().optional().describe("할일의 부가적인 상세 내용. 없으면 null"),
+        description: z.string().nullable().optional().describe("할일의 부가적인 상세 내용. 정보가 없으면 실제 null 값을 반환하세요 (문자열 'null' 금지)"),
         priority: z.enum(["high", "medium", "low"]).describe("할일의 중요도/우선순위. 없으면 기본값 medium"),
         category: z.enum(["업무", "개인", "학습", "기타"]).describe("가장 알맞은 할일의 카테고리. 없으면 기본값 기타"),
-        dueDate: z.string().optional().describe("마감 기한이 파악된다면 ISO 8601 형식(YYYY-MM-DDTHH:mm:ss.sssZ)으로 변환. 파악 안되면 null. 오늘 시각 기준: " + today),
+        dueDate: z.string().nullable().optional().describe("마감 기한이 파악된다면 ISO 8601 형식(YYYY-MM-DDTHH:mm:ss.sssZ)으로 변환. 파악 안되면 실제 null 값을 반환하세요 (문자열 'null' 금지). 오늘 시각 기준: " + today),
       }),
-      prompt: `다음 사용자의 자연어 입력을 바탕으로 할일(Todo) 객체를 생성하세요.\n입력원문: "${prompt}"`,
+      prompt: `다음 사용자의 자연어 입력을 바탕으로 할일(Todo) 객체를 생성하세요.
+정보가 부족하여 필드 값을 채울 수 없는 경우, 문자열 "null"이 아닌 실제 null 값을 반환해야 합니다.
+입력원문: "${prompt}"`,
     });
 
     return { data: object, error: null };

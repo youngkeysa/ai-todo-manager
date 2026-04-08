@@ -4,12 +4,29 @@
 import { ClipboardList } from "lucide-react";
 import TodoItem from "./TodoItem";
 import { type Todo } from "@/types/todo";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
 
 interface TodoListProps {
   todos: Todo[];
   onToggle: (id: string) => void;
   onDelete: (id: string) => void;
   onEdit: (todo: Todo) => void;
+  onReorder?: (newTodos: Todo[]) => void;
+  canReorder?: boolean;
 }
 
 /**
@@ -17,7 +34,26 @@ interface TodoListProps {
  * - 할일이 없으면 Empty State UI 표시
  * - 완료된 항목은 하단에 구분선과 함께 분리 표시
  */
-const TodoList = ({ todos, onToggle, onDelete, onEdit }: TodoListProps) => {
+const TodoList = ({ todos, onToggle, onDelete, onEdit, onReorder, canReorder }: TodoListProps) => {
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (over && active.id !== over.id && onReorder) {
+      const oldIndex = todos.findIndex((t) => t.id === active.id);
+      const newIndex = todos.findIndex((t) => t.id === over.id);
+
+      const newTodos = arrayMove(todos, oldIndex, newIndex);
+      onReorder(newTodos);
+    }
+  };
+
   const activeTodos = todos.filter((t) => !t.completed);
   const completedTodos = todos.filter((t) => t.completed);
 
@@ -35,6 +71,31 @@ const TodoList = ({ todos, onToggle, onDelete, onEdit }: TodoListProps) => {
           </p>
         </div>
       </div>
+    );
+  }
+
+  if (canReorder) {
+    return (
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragEnd={handleDragEnd}
+      >
+        <SortableContext items={todos} strategy={verticalListSortingStrategy}>
+          <div className="space-y-2">
+            {todos.map((todo) => (
+              <TodoItem
+                key={todo.id}
+                todo={todo}
+                onToggle={onToggle}
+                onDelete={onDelete}
+                onEdit={onEdit}
+                isSortable={true}
+              />
+            ))}
+          </div>
+        </SortableContext>
+      </DndContext>
     );
   }
 

@@ -63,7 +63,6 @@ CREATE TABLE public.todos (
   priority TEXT NOT NULL CHECK (priority IN ('high', 'medium', 'low')),
   category TEXT NOT NULL CHECK (category IN ('업무', '개인', '학습', '기타')),
   completed BOOLEAN DEFAULT FALSE NOT NULL,
-  order_index INTEGER DEFAULT 0 NOT NULL,
   updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
 );
 
@@ -102,5 +101,38 @@ END;
 $$;
 
 CREATE OR REPLACE TRIGGER update_todos_updated_at
-  BEFORE UPDATE ON public.todos
+
+-- ------------------------------------------------------------
+-- 3. goals 테이블 (월간/주간 목표 관리)
+-- ------------------------------------------------------------
+CREATE TABLE public.goals (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES public.users(id) ON DELETE CASCADE NOT NULL,
+  type TEXT NOT NULL CHECK (type IN ('monthly', 'weekly')),
+  content TEXT NOT NULL DEFAULT '',
+  updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+  UNIQUE(user_id, type)
+);
+
+-- RLS 활성화
+ALTER TABLE public.goals ENABLE ROW LEVEL SECURITY;
+
+-- 정책: 소유자만 자신의 목표 조회 권한
+CREATE POLICY "Users can view own goals"
+  ON public.goals FOR SELECT
+  USING (auth.uid() = user_id);
+
+-- 정책: 소유자만 자신의 목표 생성 권한
+CREATE POLICY "Users can insert own goals"
+  ON public.goals FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+-- 정책: 소유자만 자신의 목표 수정 권한
+CREATE POLICY "Users can update own goals"
+  ON public.goals FOR UPDATE
+  USING (auth.uid() = user_id);
+
+-- (자동화) 목표 수정 시 updated_at 타임스탬프 자동 갱신 트리거
+CREATE OR REPLACE TRIGGER update_goals_updated_at
+  BEFORE UPDATE ON public.goals
   FOR EACH ROW EXECUTE PROCEDURE public.update_updated_at_column();

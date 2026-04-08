@@ -136,6 +136,7 @@ const SearchFilter = ({
             <SelectValue placeholder="정렬" />
           </SelectTrigger>
           <SelectContent>
+            <SelectItem value="order_index-desc">직접 정렬</SelectItem>
             <SelectItem value="priority-desc">우선순위순</SelectItem>
             <SelectItem value="due_date-asc">마감일 빠른순</SelectItem>
             <SelectItem value="created_date-desc">최신순</SelectItem>

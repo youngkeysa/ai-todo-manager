@@ -4,7 +4,9 @@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Pencil, Trash2, Calendar } from "lucide-react";
+import { Pencil, Trash2, Calendar, GripVertical } from "lucide-react";
+import { useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { cn } from "@/lib/utils";
 import { type Todo, type Priority, type Category } from "@/types/todo";
 
@@ -41,6 +43,8 @@ interface TodoItemProps {
   onDelete: (id: string) => void;
   /** 수정 콜백 */
   onEdit: (todo: Todo) => void;
+  /** 정렬 가능 여부 */
+  isSortable?: boolean;
 }
 
 /**
@@ -48,7 +52,23 @@ interface TodoItemProps {
  * - 완료 시 취소선 + 흐림 처리
  * - 마감일이 지난 미완료 항목은 빨간 날짜 표시
  */
-const TodoItem = ({ todo, onToggle, onDelete, onEdit }: TodoItemProps) => {
+const TodoItem = ({ todo, onToggle, onDelete, onEdit, isSortable }: TodoItemProps) => {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: todo.id, disabled: !isSortable });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 50 : "auto",
+    opacity: isDragging ? 0.3 : todo.completed ? 0.5 : 1,
+  };
+
   // 마감 지연 여부: 마감일이 현재보다 이전이고 미완료인 경우
   const isOverdue =
     !todo.completed &&
@@ -63,12 +83,24 @@ const TodoItem = ({ todo, onToggle, onDelete, onEdit }: TodoItemProps) => {
 
   return (
     <div
+      ref={setNodeRef}
+      style={style}
       className={cn(
         "group flex items-start gap-3 rounded-xl border bg-card p-4 shadow-sm transition-all duration-200",
         "hover:shadow-md hover:border-primary/30",
-        todo.completed && "opacity-50"
+        isDragging && "border-primary shadow-lg ring-2 ring-primary/20"
       )}
     >
+      {/* 정렬 핸들 */}
+      {isSortable && (
+        <div
+          {...attributes}
+          {...listeners}
+          className="mt-0.5 cursor-grab active:cursor-grabbing text-muted-foreground/30 hover:text-muted-foreground transition-colors"
+        >
+          <GripVertical className="h-4 w-4" />
+        </div>
+      )}
       {/* 완료 체크박스 */}
       <Checkbox
         id={`todo-${todo.id}`}
