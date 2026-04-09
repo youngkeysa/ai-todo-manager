@@ -108,7 +108,7 @@ CREATE OR REPLACE TRIGGER update_todos_updated_at
 CREATE TABLE public.goals (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   user_id UUID REFERENCES public.users(id) ON DELETE CASCADE NOT NULL,
-  type TEXT NOT NULL CHECK (type IN ('monthly', 'weekly')),
+  type TEXT NOT NULL CHECK (type IN ('monthly', 'weekly', 'daily')),
   content TEXT NOT NULL DEFAULT '',
   order_index INTEGER DEFAULT 0 NOT NULL,
   updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,

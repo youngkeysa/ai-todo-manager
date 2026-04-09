@@ -14,15 +14,16 @@ import { generateDayReflection } from "@/lib/ai/actions";
 import { toast } from "sonner";
 
 interface DiarySectionProps {
-  userId: string;
+  userId?: string;
   todos: Todo[];
+  onRequireLogin?: () => void;
 }
 
 /**
  * 오늘의 일기/다짐 섹션 컴포넌트
  * 날짜별 기록 및 AI 하루 회고 피드백 기능 포함
  */
-export default function DiarySection({ userId, todos }: DiarySectionProps) {
+export default function DiarySection({ userId, todos, onRequireLogin }: DiarySectionProps) {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [content, setContent] = useState("");
   const [aiReflection, setAiReflection] = useState<string | null>(null);
@@ -38,6 +39,13 @@ export default function DiarySection({ userId, todos }: DiarySectionProps) {
   const fetchDiary = useCallback(async () => {
     setIsLoading(true);
     setAiReflection(null);
+    if (!userId) {
+      setContent("");
+      setLastSavedContent("");
+      setIsLoading(false);
+      return;
+    }
+    
     const { data, error } = await supabase
       .from("diaries")
       .select("*")
@@ -57,11 +65,14 @@ export default function DiarySection({ userId, todos }: DiarySectionProps) {
   }, [userId, dateStr, supabase]);
 
   useEffect(() => {
-    if (userId) fetchDiary();
-  }, [userId, fetchDiary]);
+    fetchDiary();
+  }, [fetchDiary]);
 
   // 일기 저장 (Upsert)
   const saveDiary = async (forcedContent?: string, reflection?: string | null) => {
+    if (!userId && onRequireLogin) {
+      return onRequireLogin();
+    }
     const contentToSave = (forcedContent ?? content).trim();
     const reflectionToSave = reflection === undefined ? aiReflection : reflection;
     
@@ -93,6 +104,9 @@ export default function DiarySection({ userId, todos }: DiarySectionProps) {
 
   // AI 하루 회고 생성
   const handleAiAnalyze = async () => {
+    if (!userId && onRequireLogin) {
+      return onRequireLogin();
+    }
     if (!content.trim()) {
       toast.error("먼저 오늘의 일기를 작성해 주세요!");
       return;

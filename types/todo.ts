@@ -80,7 +80,7 @@ export interface AiSummary {
 // ------------------------------------------------------------
 // 월간 / 주간 목표
 // ------------------------------------------------------------
-export type GoalType = "monthly" | "weekly";
+export type GoalType = "monthly" | "weekly" | "daily";
 
 export interface Goal {
   id: string;

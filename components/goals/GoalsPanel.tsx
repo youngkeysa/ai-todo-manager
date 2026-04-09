@@ -3,13 +3,14 @@
 import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Target, Calendar, Loader2 } from "lucide-react";
+import { Target, Calendar, Loader2, Zap } from "lucide-react";
 import { Goal, GoalType } from "@/types/todo";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
 interface GoalsPanelProps {
-  userId: string;
+  userId?: string;
+  onRequireLogin?: () => void;
 }
 
 /**
@@ -106,17 +107,19 @@ const GoalCard = ({
 /**
  * 월간/주간 목표(각 5개)를 관리하는 패널 컴포넌트
  */
-export default function GoalsPanel({ userId }: GoalsPanelProps) {
+export default function GoalsPanel({ userId, onRequireLogin }: GoalsPanelProps) {
   // 실제 DB 데이터와 매핑된 로컬 텍스트 상태
   const [goalStrings, setGoalStrings] = useState<Record<GoalType, string[]>>({
     monthly: ["", "", "", "", ""],
     weekly: ["", "", "", "", ""],
+    daily: ["", "", "", "", ""],
   });
   
   // 저장 중인 상태 관리 (타입별, 인덱스별)
   const [savingStatus, setSavingStatus] = useState<Record<GoalType, Set<number>>>({
     monthly: new Set(),
     weekly: new Set(),
+    daily: new Set(),
   });
 
   const [loading, setLoading] = useState(true);
@@ -126,6 +129,12 @@ export default function GoalsPanel({ userId }: GoalsPanelProps) {
   useEffect(() => {
     const fetchGoals = async () => {
       setLoading(true);
+      if (!userId) {
+        // 비로그인 (체험 모드) 시 로딩 화면 후 빈 상태 및 기본 데모 보여주기
+        setLoading(false);
+        return;
+      }
+      
       const { data, error } = await supabase
         .from("goals")
         .select("*")
@@ -135,9 +144,10 @@ export default function GoalsPanel({ userId }: GoalsPanelProps) {
       if (error) {
         console.error("목표 로딩 실패:", error);
       } else if (data) {
-        const newGoalStrings = {
+        const newGoalStrings: Record<GoalType, string[]> = {
           monthly: ["", "", "", "", ""],
           weekly: ["", "", "", "", ""],
+          daily: ["", "", "", "", ""],
         };
         data.forEach((g: Goal) => {
           if (g.order_index >= 0 && g.order_index < 5) {
@@ -149,11 +159,14 @@ export default function GoalsPanel({ userId }: GoalsPanelProps) {
       setLoading(false);
     };
 
-    if (userId) fetchGoals();
+    fetchGoals();
   }, [userId, supabase]);
 
   // 입력 변경 처리
   const handleInputChange = (type: GoalType, index: number, value: string) => {
+    if (!userId && onRequireLogin) {
+      return onRequireLogin();
+    }
     setGoalStrings(prev => {
       const newList = [...prev[type]];
       newList[index] = value;
@@ -163,6 +176,9 @@ export default function GoalsPanel({ userId }: GoalsPanelProps) {
 
   // 개별 목표 저장 로직
   const handleSaveGoal = async (type: GoalType, index: number) => {
+    if (!userId && onRequireLogin) {
+      return onRequireLogin();
+    }
     const content = goalStrings[type][index].trim();
     
     // 이전에 저장 중이었는지 확인
@@ -207,8 +223,8 @@ export default function GoalsPanel({ userId }: GoalsPanelProps) {
 
   if (loading) {
     return (
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-        {[1, 2].map((i) => (
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+        {[1, 2, 3].map((i) => (
           <div key={i} className="h-48 rounded-xl bg-muted animate-pulse" />
         ))}
       </div>
@@ -216,10 +232,10 @@ export default function GoalsPanel({ userId }: GoalsPanelProps) {
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 animate-in fade-in slide-in-from-top-4 duration-500">
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4 animate-in fade-in slide-in-from-top-4 duration-500">
       <GoalCard 
         type="monthly" 
-        title="Monthly Strategy (5)" 
+        title="Monthly Strategy" 
         icon={Target} 
         colorClass="from-indigo-600 to-blue-500"
         goalList={goalStrings.monthly}
@@ -229,11 +245,21 @@ export default function GoalsPanel({ userId }: GoalsPanelProps) {
       />
       <GoalCard 
         type="weekly" 
-        title="Weekly Sprint (5)" 
+        title="Weekly Sprint" 
         icon={Calendar} 
         colorClass="from-emerald-600 to-teal-500" 
         goalList={goalStrings.weekly}
         savingIndices={savingStatus.weekly}
+        onChange={handleInputChange}
+        onSave={handleSaveGoal}
+      />
+      <GoalCard 
+        type="daily" 
+        title="Daily Action" 
+        icon={Zap} 
+        colorClass="from-fuchsia-600 to-purple-500" 
+        goalList={goalStrings.daily}
+        savingIndices={savingStatus.daily}
         onChange={handleInputChange}
         onSave={handleSaveGoal}
       />

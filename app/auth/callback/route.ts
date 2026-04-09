@@ -7,8 +7,8 @@ import { cookies } from "next/headers";
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
-  // 인증 후 이동할 페이지 (기본: 메인)
-  const next = searchParams.get("next") ?? "/";
+  // 인증 후 이동할 페이지 (기본: 대시보드)
+  const next = searchParams.get("next") ?? "/dashboard";
 
   if (code) {
     const cookieStore = await cookies();

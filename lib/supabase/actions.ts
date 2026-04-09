@@ -32,8 +32,8 @@ export const login = async (email: string, password: string) => {
     return "로그인 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.";
   }
 
-  // 성공 시 메인 페이지로 리디렉션
-  redirect("/");
+  // 성공 시 대시보드 페이지로 리디렉션
+  redirect("/dashboard");
 };
 
 // ============================================================

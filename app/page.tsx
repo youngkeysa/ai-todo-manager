@@ -1,556 +1,206 @@
 "use client";
 
-import { useState, useMemo, useCallback, useEffect } from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
-import { Sparkles, Plus, Bot, LogOut, Loader2, UserCircle2 } from "lucide-react";
-import { generateTodoFromText, generateProductivitySummary } from "@/lib/ai/actions";
-import TodoList from "@/components/todos/TodoList";
-import SearchFilter from "@/components/todos/SearchFilter";
-import AiSummaryPanel from "@/components/todos/AiSummaryPanel";
-import TodoFormModal from "@/components/todos/TodoFormModal";
-import GoalsPanel from "@/components/goals/GoalsPanel";
-import DiarySection from "@/components/diary/DiarySection";
-import {
-  type Todo,
-  type TodoCreateInput,
-  type TodoFilter,
-  type SortOption,
-  type AiSummary,
-} from "@/types/todo";
-import { logout } from "@/lib/supabase/actions";
-import { createClient } from "@/lib/supabase/client";
+import { Sparkles, Bot, Target, Calendar, Zap, ArrowRight, CheckCircle2, Star } from "lucide-react";
 
-/** 우선순위 정렬 가중치 */
-const PRIORITY_WEIGHT = { high: 0, medium: 1, low: 2 };
-
-export default function HomePage() {
-  // 현재 로그인한 사용자 정보 상태
-  const [currentUser, setCurrentUser] = useState<any>(null);
-
-  // 할일 목록 상태 (Supabase에서 페치)
-  const [todos, setTodos] = useState<Todo[]>([]);
-  const [isInitialLoading, setIsInitialLoading] = useState(true);
-
-  // 검색/필터/정렬 상태
-  const [filter, setFilter] = useState<TodoFilter>({
-    search: "",
-    priority: "all",
-    category: "all",
-    status: "all",
-  });
-  const [sort, setSort] = useState<SortOption>({
-    field: "order_index",
-    direction: "desc",
-  });
-
-  // AI 요약 패널 상태
-  const [isSummaryOpen, setIsSummaryOpen] = useState(false);
-  const [summary, setSummary] = useState<AiSummary | null>(null);
-  const [isSummaryLoading, setIsSummaryLoading] = useState(false);
-  const [activeSummaryTab, setActiveSummaryTab] = useState<"daily" | "weekly">("daily");
-  const [aiError, setAiError] = useState<string | null>(null);
-
-  // AI 자연어 할일 입력 상태
-  const [aiPrompt, setAiPrompt] = useState("");
-  const [isAiLoading, setIsAiLoading] = useState(false);
-
-  const supabase = createClient();
-
-  // ----------------------------------------------------------
-  // 데이터 페치 (Read)
-  // ----------------------------------------------------------
-  useEffect(() => {
-    let isMounted = true;
-
-    const fetchTodos = async () => {
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return; // 미들웨어에서 리디렉션 처리됨
-        if (isMounted) setCurrentUser(user);
-
-        // 1. order_index 기준 정렬 시도
-        let { data, error } = await supabase
-          .from("todos")
-          .select("*")
-          .order("order_index", { ascending: false });
-
-        // 정렬 에러 발생 시 (컬럼 미생성 등) 폴백 처리
-        if (error) {
-          console.warn("order_index 정렬 실패, 생성일순으로 불러옵니다.");
-          const { data: fallbackData, error: fallbackError } = await supabase
-            .from("todos")
-            .select("*")
-            .order("created_date", { ascending: false });
-          
-          if (fallbackError) throw fallbackError;
-          data = fallbackData;
-        }
-
-        if (isMounted && data) {
-          setTodos(data as Todo[]);
-        }
-      } catch (error) {
-        console.error("데이터 로딩 실패:", error);
-      } finally {
-        if (isMounted) setIsInitialLoading(false);
-      }
-    };
-
-    fetchTodos();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [supabase]);
-
-  // ----------------------------------------------------------
-  // 이벤트 핸들러 (Create, Update, Delete)
-  // ----------------------------------------------------------
-
-  /** 완료 체크박스 토글 (Update) - Optimistic UI 적용 */
-  const handleToggle = useCallback(
-    async (id: string) => {
-      const targetTodo = todos.find((t) => t.id === id);
-      if (!targetTodo) return;
-
-      const newStatus = !targetTodo.completed;
-      const updatedTime = new Date().toISOString();
-
-      // UI 즉시 반영 (낙관적 업데이트)
-      setTodos((prev) =>
-        prev.map((t) => (t.id === id ? { ...t, completed: newStatus, updated_at: updatedTime } : t))
-      );
-
-      // DB 반영
-      const { error } = await supabase
-        .from("todos")
-        .update({ completed: newStatus, updated_at: updatedTime })
-        .eq("id", id);
-
-      if (error) {
-        console.error("상태 업데이트 실패:", error);
-        // 실패 시 롤백 (여기선 간소화)
-      }
-    },
-    [todos, supabase]
-  );
-
-  /** 할일 삭제 (Delete) - Optimistic UI 적용 */
-  const handleDelete = useCallback(
-    async (id: string) => {
-      const previousTodos = [...todos];
-
-      // UI 즉시 반영
-      setTodos((prev) => prev.filter((t) => t.id !== id));
-
-      // DB 삭재
-      const { error } = await supabase.from("todos").delete().eq("id", id);
-
-      if (error) {
-        console.error("할일 삭제 실패:", error);
-        setTodos(previousTodos); // 실패 시 복원
-      }
-    },
-    [todos, supabase]
-  );
-
-  // 모달 제어
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editTarget, setEditTarget] = useState<Todo | null>(null);
-
-  const handleOpenAdd = useCallback(() => {
-    setEditTarget(null);
-    setIsModalOpen(true);
-  }, []);
-
-  const handleEdit = useCallback((todo: Todo) => {
-    setEditTarget(todo);
-    setIsModalOpen(true);
-  }, []);
-
-  const handleCloseModal = useCallback(() => {
-    setIsModalOpen(false);
-    setEditTarget(null);
-  }, []);
-
-  /** 할일 저장 (Create / Update) */
-  const handleSave = useCallback(
-    async (data: TodoCreateInput) => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      if (editTarget) {
-        // [수정] DB 반영
-        const updatedData = {
-          title: data.title,
-          description: data.description ?? null,
-          due_date: data.due_date ?? null,
-          priority: data.priority,
-          category: data.category,
-          updated_at: new Date().toISOString(),
-        };
-
-        const { data: result, error } = await supabase
-          .from("todos")
-          .update(updatedData)
-          .eq("id", editTarget.id)
-          .select()
-          .single();
-
-        if (error) {
-          console.error("할일 수정 에러:", error);
-          return;
-        }
-
-        if (result) {
-          setTodos((prev) =>
-            prev.map((t) => (t.id === editTarget.id ? (result as Todo) : t))
-          );
-        }
-      } else {
-        // [추가] DB 반영
-        const newRecord = {
-          user_id: user.id,
-          title: data.title,
-          description: data.description ?? null,
-          due_date: data.due_date ?? null,
-          priority: data.priority,
-          category: data.category,
-        };
-
-        const { data: result, error } = await supabase
-          .from("todos")
-          .insert(newRecord)
-          .select()
-          .single();
-
-        if (error) {
-          console.error("할일 추가 에러:", error);
-          return;
-        }
-
-        if (result) {
-          // 최신순 정렬에 맞게 맨 앞에 추가
-          setTodos((prev) => [result as Todo, ...prev]);
-        }
-      }
-    },
-    [editTarget, supabase]
-  );
-
-  /** 할일 순서 변경 (Drag & Drop) */
-  const handleReorder = useCallback(
-    async (newTodos: Todo[]) => {
-      // 1. UI 즉시 반영
-      setTodos(newTodos);
-
-      // 2. DB 반영 (비동기)
-      // 모든 항목의 order_index를 업데이트하는 대신, 변경된 항목들만 처리하거나 
-      // 간단하게 전체 순서를 기반으로 order_index를 재계산하여 업데이트
-      const updates = newTodos.map((todo, index) => ({
-        id: todo.id,
-        order_index: (newTodos.length - index) * 100, // 큰 값이 위로 오도록 (desc 정렬 기준)
-      }));
-
-      // Supabase 에서 upsert 또는 개별 update 수행 (여기서는 단순화를 위해 개별 업데이트 제안)
-      // 성능을 위해 rpc를 사용하거나 병렬 처리를 할 수 있음
-      try {
-        const { error } = await supabase.from("todos").upsert(
-          newTodos.map((t, i) => ({
-            ...t,
-            order_index: (newTodos.length - i) * 100,
-            updated_at: new Date().toISOString(),
-          }))
-        );
-        if (error) throw error;
-      } catch (err) {
-        console.error("순서 저장 실패:", err);
-      }
-    },
-    [supabase]
-  );
-
-  /** 필터/정렬 제어 */
-  const handleFilterChange = useCallback((partial: Partial<TodoFilter>) => {
-    setFilter((prev) => ({ ...prev, ...partial }));
-  }, []);
-
-  const handleFilterReset = useCallback(() => {
-    setFilter({ search: "", priority: "all", category: "all", status: "all" });
-  }, []);
-
-  /** AI 요약 데이터 페칭 (일일/주간) */
-  const loadAiSummary = useCallback(async (period: "daily" | "weekly") => {
-    setIsSummaryLoading(true);
-    setActiveSummaryTab(period);
-    setAiError(null);
-    
-    // 강제로 기존 데이터 초기화 (다시 불러오기 효과)
-    setSummary(null);
-
-    const { data: result, error } = await generateProductivitySummary(todos, period);
-    
-    if (error || !result) {
-      console.error(error);
-      setAiError(error || "요약을 가져오는 중 오류가 발생했습니다.");
-    } else {
-      setSummary({
-        type: period,
-        summary: result.summary,
-        completion_rate: result.completion_rate || 0,
-        urgent_tasks: result.urgent_tasks || [],
-        insights: result.insights || [],
-        recommendations: result.recommendations || [],
-        weekly_trend: result.weekly_trend,
-      });
-    }
-    setIsSummaryLoading(false);
-  }, [todos]);
-
-  /** AI 요약 패널 제어 (단순 열기/닫기만 수행) */
-  const handleSummaryToggle = useCallback(() => {
-    setIsSummaryOpen(!isSummaryOpen);
-  }, [isSummaryOpen]);
-
-  /** 자연어로 AI 할일 자동 추가 */
-  const handleAddAiTodo = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!aiPrompt.trim() || !currentUser) return;
-
-    setIsAiLoading(true);
-    const { data: aiParsedTodo, error } = await generateTodoFromText(aiPrompt);
-    
-    if (error || !aiParsedTodo) {
-      alert("AI 변환 실패: " + error);
-      setIsAiLoading(false);
-      return;
-    }
-
-    const newRecord = {
-      user_id: currentUser.id,
-      title: aiParsedTodo.title,
-      description: (aiParsedTodo.description === "null" || !aiParsedTodo.description) ? null : aiParsedTodo.description,
-      due_date: (aiParsedTodo.dueDate === "null" || !aiParsedTodo.dueDate) ? null : aiParsedTodo.dueDate,
-      priority: aiParsedTodo.priority || "medium",
-      category: aiParsedTodo.category || "기타",
-    };
-
-    const { data: result, error: insertError } = await supabase
-      .from("todos")
-      .insert(newRecord)
-      .select()
-      .single();
-
-    if (insertError) {
-      console.error("할일 추가 에러:", insertError);
-      alert("DB 저장에 실패했습니다.");
-    } else if (result) {
-      setTodos((prev) => [result as Todo, ...prev]);
-      setAiPrompt(""); // 폼 초기화
-    }
-    setIsAiLoading(false);
-  };
-
-  // ----------------------------------------------------------
-  // 필터링 + 정렬
-  // ----------------------------------------------------------
-  const filteredTodos = useMemo(() => {
-    let result = [...todos];
-
-    if (filter.search) {
-      const q = filter.search.toLowerCase();
-      result = result.filter(
-        (t) =>
-          t.title.toLowerCase().includes(q) ||
-          (t.description ?? "").toLowerCase().includes(q)
-      );
-    }
-    if (filter.priority && filter.priority !== "all") {
-      result = result.filter((t) => t.priority === filter.priority);
-    }
-    if (filter.category && filter.category !== "all") {
-      result = result.filter((t) => t.category === filter.category);
-    }
-    if (filter.status && filter.status !== "all") {
-      const now = new Date();
-      result = result.filter((t) => {
-        if (filter.status === "completed") return t.completed;
-        if (filter.status === "overdue")
-          return !t.completed && t.due_date !== null && new Date(t.due_date) < now;
-        return !t.completed;
-      });
-    }
-
-    result.sort((a, b) => {
-      if (sort.field === "priority") {
-        return PRIORITY_WEIGHT[a.priority] - PRIORITY_WEIGHT[b.priority];
-      }
-      if (sort.field === "due_date") {
-        const da = a.due_date ? new Date(a.due_date).getTime() : Infinity;
-        const db = b.due_date ? new Date(b.due_date).getTime() : Infinity;
-        return sort.direction === "asc" ? da - db : db - da;
-      }
-      if (sort.field === "order_index") {
-        return sort.direction === "asc" ? a.order_index - b.order_index : b.order_index - a.order_index;
-      }
-      const da = new Date(a.created_date).getTime();
-      const db = new Date(b.created_date).getTime();
-      return sort.direction === "asc" ? da - db : db - da;
-    });
-
-    return result;
-  }, [todos, filter, sort]);
-
-  const completedCount = todos.filter((t) => t.completed).length;
-
-  // 로딩 화면 처리
-  if (isInitialLoading) {
-    return (
-      <div className="flex h-screen w-full items-center justify-center bg-background rounded-lg">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
-
+/**
+ * 신규 프리미엄 랜딩 페이지 컴포넌트
+ * - 미인증 사용자에게 서비스의 가치와 UI 미리보기를 제공
+ */
+export default function LandingPage() {
   return (
-    <div className="flex min-h-screen flex-col bg-background">
-      {/* 헤더 */}
-      <header className="sticky top-0 z-10 border-b bg-background/80 backdrop-blur-sm">
-        <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-4">
+    <div className="flex flex-col min-h-screen bg-slate-950 text-white overflow-hidden">
+      {/* 1. 네비게이션 */}
+      <nav className="fixed top-0 w-full z-50 border-b border-white/5 bg-slate-950/80 backdrop-blur-xl">
+        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary">
-              <Bot className="h-4 w-4 text-primary-foreground" />
+            <div className="p-1.5 rounded-lg bg-indigo-600 shadow-lg shadow-indigo-500/20">
+              <Bot className="h-5 w-5 text-white" />
             </div>
-            <span className="text-sm font-bold tracking-tight">AI Todo</span>
+            <span className="font-bold text-lg tracking-tight">AI Todo</span>
           </div>
-          <div className="flex items-center gap-3">
-            {/* 사용자 프로필 영역 */}
-            {currentUser && (
-              <div className="hidden sm:flex items-center gap-2 mr-2">
-                {currentUser.user_metadata?.avatar_url ? (
-                  <img
-                    src={currentUser.user_metadata.avatar_url}
-                    alt="Profile"
-                    className="h-7 w-7 rounded-full object-cover shadow-sm ring-1 ring-border"
-                  />
-                ) : (
-                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-secondary text-secondary-foreground">
-                    <UserCircle2 className="h-5 w-5" />
-                  </div>
-                )}
-                <div className="flex flex-col">
-                  <span className="text-xs font-medium leading-none">
-                    {currentUser.user_metadata?.full_name || currentUser.user_metadata?.name || "사용자"}
-                  </span>
-                  <span className="text-[10px] text-muted-foreground truncate max-w-[100px] mt-1 leading-none">
-                    {currentUser.email}
-                  </span>
-                </div>
-              </div>
-            )}
-
-            <Button
-              variant={isSummaryOpen ? "default" : "outline"}
-              size="sm"
-              className="h-8 gap-1.5 text-xs"
-              onClick={handleSummaryToggle}
-            >
-              <Sparkles className="h-3.5 w-3.5" />
-              AI 요약
+          <div className="flex items-center gap-4">
+            <Button asChild variant="ghost" className="text-slate-300 hover:text-white hover:bg-white/5">
+              <Link href="/login">
+                로그인
+              </Link>
             </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 text-muted-foreground"
-              onClick={() => logout()}
-              aria-label="로그아웃"
-            >
-              <LogOut className="h-4 w-4" />
+            <Button asChild className="bg-indigo-600 hover:bg-indigo-500 text-white border-none shadow-lg shadow-indigo-500/30">
+              <Link href="/signup">
+                무료로 시작하기
+              </Link>
             </Button>
           </div>
         </div>
-      </header>
+      </nav>
 
-      {/* 메인 콘텐츠 */}
-      <main className="mx-auto w-full max-w-5xl flex-1 space-y-4 px-4 py-6">
-        <AiSummaryPanel
-          isOpen={isSummaryOpen}
-          onToggle={handleSummaryToggle}
-          summary={summary}
-          isLoading={isSummaryLoading}
-          activeTab={activeSummaryTab}
-          onTabChange={setActiveSummaryTab}
-          onLoadSummary={loadAiSummary}
-          error={aiError}
-        />
-
-        {currentUser && <GoalsPanel userId={currentUser.id} />}
-
-        <SearchFilter
-          filter={filter}
-          sort={sort}
-          onFilterChange={handleFilterChange}
-          onSortChange={setSort}
-          onReset={handleFilterReset}
-        />
-
-        <form className="flex flex-col sm:flex-row gap-2" onSubmit={handleAddAiTodo}>
-          <div className="flex-1 flex items-center gap-2 rounded-md border bg-background px-3 focus-within:ring-2 focus-within:ring-primary/20 transition-all">
-            <Sparkles className="h-4 w-4 text-primary shrink-0" />
-            <input
-              type="text"
-              placeholder="자연어로 할일을 적어보세요. (예: 내일 오전 10시까지 디자인 시안 제출하기)"
-              className="flex-1 bg-transparent py-2.5 text-sm outline-none placeholder:text-muted-foreground/70"
-              value={aiPrompt}
-              onChange={(e) => setAiPrompt(e.target.value)}
-              disabled={isAiLoading}
-            />
+      {/* 2. 히어로 섹션 */}
+      <section className="relative pt-32 pb-20 px-6">
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-4xl h-[500px] bg-indigo-600/20 blur-[120px] -z-10 rounded-full" />
+        
+        <div className="max-w-5xl mx-auto text-center space-y-8">
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/5 border border-white/10 text-indigo-300 text-sm font-medium animate-in fade-in slide-in-from-top-4 duration-500">
+            <Sparkles className="h-4 w-4" />
+            <span>AI 기반 할일 관리의 미래</span>
           </div>
-          <div className="flex gap-2 shrink-0">
-            <Button
-              type="submit"
-              className="gap-2 text-xs sm:text-sm whitespace-nowrap shadow-md hover:shadow-lg transition-all"
-              disabled={isAiLoading || !aiPrompt.trim()}
-            >
-              {isAiLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "AI 자동 구조화"}
-            </Button>
-            <Button type="button" variant="outline" className="gap-2 text-xs sm:text-sm whitespace-nowrap" onClick={handleOpenAdd}>
-              <Plus className="h-4 w-4" />
-              직접 추가
-            </Button>
-          </div>
-        </form>
-
-        <Separator />
-
-        <div className="flex items-center justify-between">
-          <p className="text-xs text-muted-foreground">{filteredTodos.length}개의 할일</p>
-          <p className="text-xs text-muted-foreground">
-            완료 <span className="font-medium text-primary">{completedCount}</span> / {todos.length}
+          
+          <h1 className="text-5xl md:text-7xl font-black tracking-tight leading-[1.1] animate-in fade-in slide-in-from-top-8 duration-700 delay-100">
+            당신의 <span className="text-transparent bg-clip-text bg-linear-to-r from-indigo-400 via-purple-400 to-pink-400">생산성</span>을<br />
+            AI가 직접 설계합니다
+          </h1>
+          
+          <p className="max-w-2xl mx-auto text-slate-400 text-lg md:text-xl leading-relaxed animate-in fade-in slide-in-from-top-12 duration-700 delay-200">
+            복잡한 생각은 AI에게 맡기세요. 자연어 입력만으로 할일을 구조화하고, 
+            지능적인 목표 설정과 회고를 통해 매일 더 나은 자신을 만나보세요.
           </p>
+          
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4 animate-in fade-in slide-in-from-top-16 duration-1000 delay-300">
+            <Button asChild size="lg" className="h-14 px-8 text-lg font-bold bg-indigo-600 hover:bg-indigo-500 shadow-xl shadow-indigo-500/20 gap-2">
+              <Link href="/dashboard">
+                무료로 체험하기 <ArrowRight className="h-5 w-5" />
+              </Link>
+            </Button>
+          </div>
         </div>
+      </section>
 
-        <TodoList
-          todos={filteredTodos}
-          onToggle={handleToggle}
-          onDelete={handleDelete}
-          onEdit={handleEdit}
-          onReorder={handleReorder}
-          canReorder={sort.field === "order_index" && filter.status === "all"}
-        />
+      {/* 3. 앱 미리보기 섹션 (Dashboard Preview) */}
+      <section className="px-6 py-20 relative">
+        <div className="max-w-6xl mx-auto">
+          <div className="relative rounded-3xl overflow-hidden border border-white/10 shadow-2xl bg-slate-900/50 backdrop-blur-sm group p-2">
+             <div className="aspect-video bg-white rounded-2xl flex flex-col overflow-hidden relative shadow-2xl">
+                {/* 상단 브라우저 탭 느낌 */}
+                <div className="h-10 bg-slate-100 border-b border-slate-200 flex items-center px-4 gap-2">
+                  <div className="flex gap-1.5">
+                    <div className="h-2.5 w-2.5 rounded-full bg-red-400" />
+                    <div className="h-2.5 w-2.5 rounded-full bg-amber-400" />
+                    <div className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
+                  </div>
+                  <div className="flex-1 text-xs text-slate-400 text-center font-mono font-medium">ai-todo.manager/dashboard</div>
+                </div>
 
-        {/* 푸터 바로 위: 오늘의 일기 섹션 */}
-        {currentUser && <DiarySection userId={currentUser.id} todos={todos} />}
-      </main>
+                {/* 화려한 내부 목업 레이아웃 (Light Mode) */}
+                <div className="flex-1 p-6 grid grid-cols-1 md:grid-cols-12 gap-6 bg-slate-50">
+                  {/* 사이드/목표 패널 가상 영역 */}
+                  <div className="hidden md:flex col-span-4 flex-col gap-4">
+                    <div className="h-10 border border-emerald-100 rounded-xl bg-emerald-50 flex items-center px-4 gap-3">
+                      <Target className="h-4 w-4 text-emerald-500" />
+                      <div className="h-3 w-1/3 bg-emerald-200 rounded" />
+                    </div>
+                    {[1, 2, 3].map(i => (
+                      <div key={i} className="p-4 bg-white rounded-2xl border border-slate-100 shadow-sm space-y-3 hover:border-indigo-100 transition-colors">
+                         <div className="h-3 w-1/2 bg-slate-200 rounded" />
+                         <div className="h-2 w-full bg-slate-100 rounded" />
+                         <div className="h-2 w-3/4 bg-slate-100 rounded" />
+                      </div>
+                    ))}
+                    <div className="mt-auto h-32 border border-indigo-100 rounded-2xl bg-linear-to-t from-indigo-50 to-white flex items-center justify-center relative overflow-hidden shadow-sm">
+                       <Bot className="h-12 w-12 text-indigo-300 absolute" />
+                    </div>
+                  </div>
 
-      {/* 추가/수정 모달 */}
-      <TodoFormModal
-        open={isModalOpen}
-        onClose={handleCloseModal}
-        onSave={handleSave}
-        editTarget={editTarget}
-      />
+                  {/* 메인 할일 영역 */}
+                  <div className="col-span-1 md:col-span-8 flex flex-col gap-4">
+                    <div className="h-14 bg-white rounded-xl border border-indigo-100 w-full flex items-center px-4 gap-3 shadow-sm ring-2 ring-indigo-50">
+                       <Sparkles className="h-5 w-5 text-indigo-500 animate-pulse" />
+                       <div className="h-3 w-2/3 bg-slate-200 rounded" />
+                    </div>
+                    
+                    <div className="flex-1 space-y-3 overflow-hidden mask-image:linear-gradient(to_bottom,white_50%,transparent)">
+                       {[1, 2, 3, 4, 5].map((i) => (
+                         <div key={i} className="h-16 bg-white hover:bg-slate-50 transition-colors rounded-xl border border-slate-100 shadow-sm flex items-center px-5 gap-4">
+                            <div className="h-5 w-5 rounded-full border-2 border-slate-200" />
+                            <div className="flex flex-col gap-2 flex-1">
+                               <div className="h-3 w-1/2 bg-slate-300 rounded" />
+                               <div className="h-2 w-1/4 bg-slate-100 rounded" />
+                            </div>
+                            {i % 2 === 0 && (
+                              <div className="h-6 px-3 bg-rose-50 rounded-md text-[10px] items-center text-rose-500 font-medium flex border border-rose-100">
+                                 High Priority
+                              </div>
+                            )}
+                         </div>
+                       ))}
+                    </div>
+                  </div>
+                </div>
+             </div>
+             
+             {/* 은은한 빛 효과 */}
+             <div className="absolute inset-0 bg-linear-to-t from-slate-950 via-transparent to-transparent pointer-events-none" />
+             <div className="absolute -inset-1 bg-linear-to-b from-indigo-500/20 to-purple-500/20 blur-2xl -z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-1000" />
+          </div>
+        </div>
+      </section>
+
+      {/* 4. 핵심 기능 카드 */}
+      <section className="px-6 py-32 bg-slate-900/30">
+        <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-10">
+          <FeatureCard 
+            icon={Zap}
+            title="AI 자연어 구조화"
+            description="'내일 오후 2시 회의'라고만 적으세요. 마감일, 우선순위, 카테고리를 AI가 알아서 정리합니다."
+            color="indigo"
+          />
+          <FeatureCard 
+            icon={Target}
+            title="지능형 목표 설계"
+            description="월간/주간/일간 전략을 한눈에 관리하고, 당신의 성장 경로를 단계별로 추적합니다."
+            color="emerald"
+          />
+          <FeatureCard 
+            icon={Sparkles}
+            title="AI 하루 회고"
+            description="작성한 일기와 할일 목록을 바탕으로 AI가 따뜻하고 객관적인 피드백을 전달합니다."
+            color="rose"
+          />
+        </div>
+      </section>
+
+      {/* 5. CTA 섹션 */}
+      <section className="px-6 py-32 text-center relative overflow-hidden">
+        <div className="absolute bottom-0 left-0 w-full h-[300px] bg-linear-to-t from-indigo-900/40 to-transparent -z-10" />
+        <div className="max-w-3xl mx-auto space-y-10">
+          <div className="flex justify-center flex-wrap gap-2">
+            {[1, 2, 3, 4, 5].map(i => <Star key={i} className="h-5 w-5 text-amber-400 fill-amber-400" />)}
+          </div>
+          <h2 className="text-3xl md:text-5xl font-bold">지금까지 경험하지 못한<br />새로운 생산성을 만나보세요</h2>
+          <Button asChild size="lg" className="h-16 px-12 text-xl font-black bg-white text-slate-950 hover:bg-slate-200 rounded-full shadow-2xl transition-transform hover:scale-105 active:scale-95">
+            <Link href="/dashboard">
+              미리 체험해보기
+            </Link>
+          </Button>
+          <p className="text-slate-500 font-medium">별도의 카드 정보 없이 즉시 이용 가능합니다.</p>
+        </div>
+      </section>
+
+      {/* 푸터 (자체 푸터가 layout에 있을 수 있으니 간소하게) */}
+      <footer className="py-10 border-t border-white/5 text-center text-slate-500 text-sm">
+        <p>© 2026 AI Todo Manager. All rights reserved.</p>
+      </footer>
+    </div>
+  );
+}
+
+function FeatureCard({ icon: Icon, title, description, color }: any) {
+  const colorMap: any = {
+    indigo: "bg-indigo-500/10 text-indigo-400 border-indigo-500/20",
+    emerald: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+    rose: "bg-rose-500/10 text-rose-400 border-rose-500/20",
+  };
+  
+  return (
+    <div className="group p-8 rounded-3xl bg-slate-900/50 border border-white/5 hover:border-white/10 hover:bg-slate-800/50 transition-all duration-300">
+      <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mb-6 border ${colorMap[color]}`}>
+        <Icon className="h-7 w-7" />
+      </div>
+      <h3 className="text-2xl font-bold mb-4 flex items-center gap-2 group-hover:text-indigo-300 transition-colors">
+        {title} <CheckCircle2 className="h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity" />
+      </h3>
+      <p className="text-slate-400 leading-relaxed font-medium">
+        {description}
+      </p>
     </div>
   );
 }
