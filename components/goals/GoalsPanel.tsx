@@ -7,6 +7,7 @@ import { Target, Calendar, Loader2, Zap } from "lucide-react";
 import { Goal, GoalType } from "@/types/todo";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 interface GoalsPanelProps {
   userId?: string;
@@ -209,8 +210,11 @@ export default function GoalsPanel({ userId, onRequireLogin }: GoalsPanelProps) 
         );
 
       if (error) throw error;
-    } catch (err) {
+    } catch (err: any) {
       console.error(`${type} ${index+1}번 목표 저장 실패:`, err);
+      toast.error('목표 저장에 실패했습니다.', { 
+        description: err?.message || '잠시 후 다시 시도해주세요.' 
+      });
     } finally {
       // 저장 상태 해제
       setSavingStatus(prev => {

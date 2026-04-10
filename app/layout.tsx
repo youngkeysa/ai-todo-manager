@@ -1,8 +1,8 @@
-// 앱 전체 레이아웃: 폰트, 메타데이터, Shadcn TooltipProvider 설정
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import Footer from "@/components/layout/Footer";
+import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -52,6 +52,7 @@ export default function RootLayout({
           <div className="flex-1 flex flex-col">{children}</div>
           <Footer />
         </TooltipProvider>
+        <Toaster />
       </body>
     </html>
   );
