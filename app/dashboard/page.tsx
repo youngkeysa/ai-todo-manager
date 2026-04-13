@@ -168,7 +168,7 @@ export default function DashboardPage() {
         console.error("상태 업데이트 실패:", error);
       }
     },
-    [todos, supabase]
+    [todos, supabase, currentUser, requireLogin]
   );
 
   /** 할일 삭제 (Delete) - Optimistic UI 적용 */
@@ -188,7 +188,7 @@ export default function DashboardPage() {
         setTodos(previousTodos); 
       }
     },
-    [todos, supabase]
+    [todos, supabase, currentUser, requireLogin]
   );
 
   // 모달 제어
@@ -295,7 +295,7 @@ export default function DashboardPage() {
         console.error("순서 저장 실패:", err);
       }
     },
-    [supabase]
+    [supabase, currentUser, requireLogin]
   );
 
   /** 필터/정렬 제어 */
@@ -332,7 +332,7 @@ export default function DashboardPage() {
       });
     }
     setIsSummaryLoading(false);
-  }, [todos]);
+  }, [todos, currentUser, requireLogin]);
 
   /** AI 요약 패널 제어 */
   const handleSummaryToggle = useCallback(() => {
