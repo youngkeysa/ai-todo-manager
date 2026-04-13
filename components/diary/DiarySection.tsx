@@ -51,9 +51,9 @@ export default function DiarySection({ userId, todos, onRequireLogin }: DiarySec
       .select("*")
       .eq("user_id", userId)
       .eq("date", dateStr)
-      .single();
+      .maybeSingle();
 
-    if (error && error.code !== "PGRST116") {
+    if (error) {
       console.error("일기 로딩 에러:", error);
     }
 
