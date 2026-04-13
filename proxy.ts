@@ -5,7 +5,7 @@ import { NextResponse, type NextRequest } from "next/server";
 /**
  * Next.js 표준 미들웨어 함수
  */
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
 
   // 1. Supabase 클라이언트 생성 (SSR 호환 쿠키 관리)
