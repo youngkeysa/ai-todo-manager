@@ -278,15 +278,23 @@ export default function DashboardPage() {
 
   /** 할일 순서 변경 (Drag & Drop) */
   const handleReorder = useCallback(
-    async (newTodos: Todo[]) => {
+    async (reorderedFiltered: Todo[]) => {
       if (!currentUser) return requireLogin();
-      setTodos(newTodos);
+
+      // 새 order_index를 즉시 계산하여 filteredTodos 재정렬이 원위치로 돌리지 않도록 방지
+      const withNewIndex = reorderedFiltered.map((t, i) => ({
+        ...t,
+        order_index: (reorderedFiltered.length - i) * 100,
+      }));
+
+      // 전체 todos에서 reorder된 항목만 업데이트(필터로 숨겨진 항목 유지)
+      const idToUpdated = new Map(withNewIndex.map((t) => [t.id, t]));
+      setTodos((prev) => prev.map((t) => idToUpdated.get(t.id) ?? t));
 
       try {
         const { error } = await supabase.from("todos").upsert(
-          newTodos.map((t, i) => ({
+          withNewIndex.map((t) => ({
             ...t,
-            order_index: (newTodos.length - i) * 100,
             updated_at: new Date().toISOString(),
           }))
         );
